@@ -9,7 +9,7 @@ pool:
 variables:
   dockerRegistryServiceConnection: 'ACR_service_conn'
   imageRepository: 'goapp'
-  containerRegistry: 'trinayacr.azurecr.io '
+  containerRegistry: 'trinayacr.azurecr.io'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
   tag: '$(Build.BuildId)'
   storageaccount: 'agentsc'
@@ -28,7 +28,7 @@ stages:
     steps:
     - task: GoTool@0
       inputs:
-        version: '1.10'
+        version: '1.20'
     - script: go build -o go-web-app
       displayName: Build Go Web Application
 
@@ -40,7 +40,7 @@ stages:
     steps:
     - task: GoTool@0
       inputs:
-        version: '1.10'
+        version: '1.20'
     - script: go test ./...
       displayName: Run Go Tests
       
@@ -167,7 +167,7 @@ stages:
       displayName: UPLOAD AQUASEC TRIVY SCAN REPORTS TO BLOB STORAGE
       inputs:
         azureSubscription: '$(serviceconn)'
-        scriptType: ps
+        scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
           az storage blob upload-batch -d $(sacontainername)/$(date "+%d-%m-%Y_%H-%M-%S") --account-name $(storageaccount) --account-key $(az storage account keys list -g $(resourcegroup) -n $(storageaccount) --query [0].value -o tsv) -s $(System.ArtifactsDirectory)/TRI
