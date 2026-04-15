@@ -8,8 +8,8 @@ pool:
 
 variables:
   dockerRegistryServiceConnection: 'ACR_service_conn'
-  imageRepository: 'app'
-  containerRegistry: ''
+  imageRepository: 'goapp'
+  containerRegistry: 'trinayacr.azurecr.io '
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
   tag: '$(Build.BuildId)'
   storageaccount: 'agentsc'
@@ -82,7 +82,7 @@ stages:
         containerRegistry: '$(dockerRegistryServiceConnection)'
         repository: '$(imageRepository)'
         command: 'build'
-        Dockerfile: '$(dockerfilePath)'
+        dockerfile: '$(dockerfilePath)'
         tags: '$(tag)'
         
 - stage: Push
@@ -98,3 +98,76 @@ stages:
         repository: '$(imageRepository)'
         command: 'push'
         tags: '$(tag)'
+
+- stage: InstallTrivy
+  displayName: InstallTrivy
+  jobs:
+  - job: InstallTrivy
+    displayName: InstallTrivy
+    steps:
+    - task: CmdLine@2
+      displayName: DOWNLOAD AND INSTALL AQUASEC TRIVY
+      inputs:
+        script: |
+         sudo apt-get install wget apt-transport-https gnupg lsb-release
+         wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+         echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+         sudo apt-get update
+         sudo apt-get install trivy
+         trivy -v
+         pwd
+
+- stage: RunTrivyScan
+  displayName: RunTrivyScan
+  jobs:
+  - job: RunTrivyScan
+    displayName: RunTrivyScan
+    steps:
+    - task: CmdLine@2
+      displayName: RUN AQUASEC TRIVY SCAN AND COPY TO ARTIFACTS STAGING DIRECTORY
+      inputs:
+        script: |
+          trivy image --exit-code 0 --severity LOW,MEDIUM $(containerRegistry)/$(imageRepository):$(tag) > low-med.txt
+          trivy image --exit-code 1 --severity HIGH,CRITICAL $(containerRegistry)/$(imageRepository):$(tag) > high-critical.txt
+          ls -l
+          cp -rvf *.txt $(target)
+
+- stage: PublishArtifacts
+  displayName: PublishArtifacts
+  jobs:
+  - job: PublishArtifacts
+    displayName: PublishArtifacts
+    steps:
+    - task: PublishBuildArtifacts@1
+      displayName: PUBLISH ARTIFACTS
+      inputs:
+        targetPath: '$(target)'
+        artifactName: '$(artifact)'
+
+- stage: DownloadArtifacts
+  displayName: DownloadArtifacts
+  jobs:
+  - job: DownloadArtifacts
+    displayName: DownloadArtifacts
+    steps:
+    - task: DownloadBuildArtifacts@1
+      displayName: DOWNLOAD ARTIFACTS
+      inputs:
+        buildType: 'current'
+        downloadType: 'single'
+        downloadPath: '$(System.ArtifactsDirectory)'
+
+- stage: UploadScanReports
+  displayName: UploadScanReports
+  jobs:
+  - job: UploadScanReports
+    displayName: UploadScanReports
+    steps:
+    - task: AzureCLI@1
+      displayName: UPLOAD AQUASEC TRIVY SCAN REPORTS TO BLOB STORAGE
+      inputs:
+        azureSubscription: '$(serviceconn)'
+        scriptType: ps
+        scriptLocation: inlineScript
+        inlineScript: |
+          az storage blob upload-batch -d $(sacontainername)/$(date "+%d-%m-%Y_%H-%M-%S") --account-name $(storageaccount) --account-key $(az storage account keys list -g $(resourcegroup) -n $(storageaccount) --query [0].value -o tsv) -s $(System.ArtifactsDirectory)/TRI
