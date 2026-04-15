@@ -171,3 +171,15 @@ stages:
         scriptLocation: inlineScript
         inlineScript: |
           az storage blob upload-batch -d $(sacontainername)/$(date "+%d-%m-%Y_%H-%M-%S") --account-name $(storageaccount) --account-key $(az storage account keys list -g $(resourcegroup) -n $(storageaccount) --query [0].value -o tsv) -s $(System.ArtifactsDirectory)/TRI
+
+- stage: UpdateManifests
+  displayName: UpdateManifests
+  jobs:
+  - job: UpdateManifests
+    displayName: UpdateManifests
+    steps:
+    - task: ShellScript@2
+      displayName: UPDATE K8S MANIFESTS WITH THE NEW IMAGE
+      inputs:
+        scriptPath: 'scripts/updateK8sManifests.sh'
+        args: 'vote $(imageRepository) $(tag)'
